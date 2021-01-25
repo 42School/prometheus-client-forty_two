@@ -97,17 +97,6 @@ describe Prometheus::Client::FortyTwo do
             metrics_prefix: metrics_prefix
           )
 
-        expect(registry).to have_received(:counter)
-          .twice
-        expect(registry).to have_received(:counter)
-          .with(*requests_registry_params)
-        expect(registry).to have_received(:counter)
-          .with(*exceptions_registry_params)
-        expect(registry).to have_received(:histogram)
-          .once
-        expect(registry).to have_received(:histogram)
-          .with(*durations_registry_params)
-
         expect(app).not_to have_received(:call)
 
         result = collector.call(env)
@@ -159,17 +148,6 @@ describe Prometheus::Client::FortyTwo do
             registry: registry,
             metrics_prefix: metrics_prefix
           )
-
-        expect(registry).to have_received(:counter)
-          .twice
-        expect(registry).to have_received(:counter)
-          .with(*requests_registry_params)
-        expect(registry).to have_received(:counter)
-          .with(*exceptions_registry_params)
-        expect(registry).to have_received(:histogram)
-          .once
-        expect(registry).to have_received(:histogram)
-          .with(*durations_registry_params)
 
         expect(app).not_to have_received(:call)
 

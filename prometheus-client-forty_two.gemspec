@@ -1,10 +1,10 @@
 lib = File.expand_path('lib', __dir__)
 $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
-require 'prometheus/client/forty_two/version'
+require 'prometheus/forty_two/version'
 
 Gem::Specification.new do |spec|
   spec.name          = 'prometheus-client-forty_two'
-  spec.version       = Prometheus::Client::FortyTwo::VERSION
+  spec.version       = Prometheus::FortyTwo::VERSION
   spec.authors       = ['Michel Belleville']
   spec.email         = ['michel.belleville@gmail.com']
 

@@ -2,12 +2,12 @@ require 'spec_helper'
 
 class FunkyException < StandardError; end
 
-describe Prometheus::Client::FortyTwo do
+describe Prometheus::FortyTwo do
   it 'has a version number' do
-    expect(Prometheus::Client::FortyTwo::VERSION).not_to be nil
+    expect(Prometheus::FortyTwo::VERSION).not_to be nil
   end
 
-  describe Prometheus::Client::FortyTwo::Middleware::Collector do
+  describe Prometheus::FortyTwo::Collector do
     let(:code) { :success }
     let(:request_method) { 'POST' }
     let(:script_name) { 'SCRIPT_NAME' }
@@ -99,12 +99,11 @@ describe Prometheus::Client::FortyTwo do
 
       context 'without specific id strippers' do
         it 'collects a success like the original collector' do
-          collector =
-            Prometheus::Client::FortyTwo::Middleware::Collector.new(
-              app,
-              registry: registry,
-              metrics_prefix: metrics_prefix
-            )
+          collector = Prometheus::FortyTwo::Collector.new(
+            app,
+            registry: registry,
+            metrics_prefix: metrics_prefix
+          )
 
           expect(app).not_to have_received(:call)
 
@@ -146,15 +145,14 @@ describe Prometheus::Client::FortyTwo do
           let(:cleaned_up_path) { '/blah/:id/something/:uuid/users/:id/b' }
 
           it 'strips specific ids' do
-            collector =
-              Prometheus::Client::FortyTwo::Middleware::Collector.new(
-                app,
-                registry: registry,
-                metrics_prefix: metrics_prefix,
-                specific_id_stripper: lambda { |path|
-                  path.gsub(%r{/users/[^/]*}, '/users/:id')
-                }
-              )
+            collector = Prometheus::FortyTwo::Collector.new(
+              app,
+              registry: registry,
+              metrics_prefix: metrics_prefix,
+              specific_id_stripper: lambda { |path|
+                path.gsub(%r{/users/[^/]*}, '/users/:id')
+              }
+            )
 
             expect(app).not_to have_received(:call)
 
@@ -195,13 +193,12 @@ describe Prometheus::Client::FortyTwo do
           let(:exception) { FunkyException.new('ooops') }
 
           it 'does not fail, only uses the standard stripper' do
-            collector =
-              Prometheus::Client::FortyTwo::Middleware::Collector.new(
-                app,
-                registry: registry,
-                metrics_prefix: metrics_prefix,
-                specific_id_stripper: -> { raise exception }
-              )
+            collector = Prometheus::FortyTwo::Collector.new(
+              app,
+              registry: registry,
+              metrics_prefix: metrics_prefix,
+              specific_id_stripper: -> { raise exception }
+            )
 
             expect(app).not_to have_received(:call)
 
@@ -251,20 +248,19 @@ describe Prometheus::Client::FortyTwo do
         end
 
         before(:each) do
-          allow(Prometheus::Client::FortyTwo::Middleware::Collector)
+          allow(Prometheus::FortyTwo::Collector)
             .to receive(:find_static_files!)
             .with(ignore_path)
             .and_return(static_files)
         end
 
         it 'ignores static files' do
-          collector =
-            Prometheus::Client::FortyTwo::Middleware::Collector.new(
-              app,
-              registry: registry,
-              metrics_prefix: metrics_prefix,
-              static_files_path: ignore_path
-            )
+          collector = Prometheus::FortyTwo::Collector.new(
+            app,
+            registry: registry,
+            metrics_prefix: metrics_prefix,
+            static_files_path: ignore_path
+          )
 
           expect(app).not_to have_received(:call)
 
@@ -329,12 +325,11 @@ describe Prometheus::Client::FortyTwo do
 
       context 'without specific id strippers' do
         it 'collects a failure like the original collector' do
-          collector =
-            Prometheus::Client::FortyTwo::Middleware::Collector.new(
-              app,
-              registry: registry,
-              metrics_prefix: metrics_prefix
-            )
+          collector = Prometheus::FortyTwo::Collector.new(
+            app,
+            registry: registry,
+            metrics_prefix: metrics_prefix
+          )
 
           expect(app).not_to have_received(:call)
 
@@ -356,15 +351,14 @@ describe Prometheus::Client::FortyTwo do
 
       context 'with specific id strippers' do
         it 'collects a failure like the original collector' do
-          collector =
-            Prometheus::Client::FortyTwo::Middleware::Collector.new(
-              app,
-              registry: registry,
-              metrics_prefix: metrics_prefix,
-              specific_id_stripper: lambda { |path|
-                path.gsub(%r{/users/[^/]*}, '/users/:id')
-              }
-            )
+          collector = Prometheus::FortyTwo::Collector.new(
+            app,
+            registry: registry,
+            metrics_prefix: metrics_prefix,
+            specific_id_stripper: lambda { |path|
+              path.gsub(%r{/users/[^/]*}, '/users/:id')
+            }
+          )
 
           expect(app).not_to have_received(:call)
 
@@ -396,20 +390,19 @@ describe Prometheus::Client::FortyTwo do
         end
 
         before(:each) do
-          allow(Prometheus::Client::FortyTwo::Middleware::Collector)
+          allow(Prometheus::FortyTwo::Collector)
             .to receive(:find_static_files!)
             .with(ignore_path)
             .and_return(static_files)
         end
 
         it 'ignores static files' do
-          collector =
-            Prometheus::Client::FortyTwo::Middleware::Collector.new(
-              app,
-              registry: registry,
-              metrics_prefix: metrics_prefix,
-              static_files_path: ignore_path
-            )
+          collector = Prometheus::FortyTwo::Collector.new(
+            app,
+            registry: registry,
+            metrics_prefix: metrics_prefix,
+            static_files_path: ignore_path
+          )
 
           expect(app).not_to have_received(:call)
 
@@ -460,20 +453,19 @@ describe Prometheus::Client::FortyTwo do
         allow(requests_registry).to receive(:increment)
         allow(durations_registry).to receive(:observe)
 
-        allow(Prometheus::Client::FortyTwo::Middleware::Collector)
+        allow(Prometheus::FortyTwo::Collector)
           .to receive(:find_static_files!)
           .with(ignore_path)
           .and_raise(exception)
       end
 
       it 'starts all the same and collects all requests' do
-        collector =
-          Prometheus::Client::FortyTwo::Middleware::Collector.new(
-            app,
-            registry: registry,
-            metrics_prefix: metrics_prefix,
-            static_files_path: ignore_path
-          )
+        collector = Prometheus::FortyTwo::Collector.new(
+          app,
+          registry: registry,
+          metrics_prefix: metrics_prefix,
+          static_files_path: ignore_path
+        )
 
         env = fake_env
         result = collector.call(env)

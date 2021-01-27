@@ -30,7 +30,7 @@ This gem offers another Collector that can be customized to:
 
 1.  Clean custom identifiers.
 
-        use Prometheus::Client::FortyTwo::Middleware::Collector, 
+        use Prometheus::FortyTwo::Collector,
             specific_id_stripper: lambda { |path|
               path
                 .gsub(%r{/users/[^/]*}, '/users/:name')
@@ -45,7 +45,7 @@ This gem offers another Collector that can be customized to:
 
 2.  Not collect metrics on static files.
 
-        use Prometheus::Client::FortyTwo::Middleware::Collector,
+        use Prometheus::FortyTwo::Collector,
             static_files_path: File.join(File.dirname(__FILE__), 'public')
 
         # this will recursively list all files in the `/public` directory
@@ -60,11 +60,11 @@ own metrics.
 # config.ru
 
 require 'rack'
-require 'prometheus/client/forty_two'
+require 'prometheus/forty_two/collector'
 require 'prometheus/middleware/exporter'
 
 use Rack::Deflater
-use Prometheus::Client::FortyTwo::Middleware::Collector,
+use Prometheus::FortyTwo::Collector,
   # TODO: add your configuration for the collector
 use Prometheus::Middleware::Exporter
 

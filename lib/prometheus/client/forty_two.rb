@@ -29,7 +29,7 @@ module Prometheus
         #   # '/en/users/albert/posts/10/articles'
         #   # '/fr/users/julie/posts/223/articles'
         #   # '/es/users/zoe/posts/68/articles'
-        #   # would be stripped as:
+        #   # would be stripped as one route:
         #   # '/:locale/users/:name/posts/:id/articles'
         #
         # If the cleaner fails, the collector will not and only use the

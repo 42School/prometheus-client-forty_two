@@ -1,5 +1,7 @@
 require 'spec_helper'
 
+class FunkyException < StandardError; end
+
 describe Prometheus::Client::FortyTwo do
   it 'has a version number' do
     expect(Prometheus::Client::FortyTwo::VERSION).not_to be nil
@@ -17,7 +19,6 @@ describe Prometheus::Client::FortyTwo do
     let(:cleaned_up_path) { '/blah/:id/something/:uuid/users/123lautaro/b' }
 
     let(:app) { double(:app) }
-    let(:env) { double(:env) }
     let(:registry) { double(:registry) }
 
     let(:requests_registry) { double(:requests_registry) }
@@ -54,17 +55,21 @@ describe Prometheus::Client::FortyTwo do
       ]
     end
 
-    before(:each) do
-      allow(env).to receive(:[])
-        .with('REQUEST_METHOD')
-        .and_return(request_method)
-      allow(env).to receive(:[])
-        .with('SCRIPT_NAME')
-        .and_return(script_name)
-      allow(env).to receive(:[])
-        .with('PATH_INFO')
-        .and_return(path_info)
+    def fake_env(overrides = {})
+      double(:env).tap do |env|
+        {
+          'REQUEST_METHOD' => request_method,
+          'SCRIPT_NAME' => script_name,
+          'PATH_INFO' => path_info
+        }
+          .merge(overrides)
+          .each do |key, value|
+            allow(env).to receive(:[]).with(key).and_return(value)
+          end
+      end
+    end
 
+    before(:each) do
       allow(registry).to receive(:counter)
         .with(*requests_registry_params)
         .and_return(requests_registry)
@@ -103,6 +108,7 @@ describe Prometheus::Client::FortyTwo do
 
           expect(app).not_to have_received(:call)
 
+          env = fake_env
           result = collector.call(env)
 
           expect(requests_registry).to have_received(:increment)
@@ -152,6 +158,7 @@ describe Prometheus::Client::FortyTwo do
 
             expect(app).not_to have_received(:call)
 
+            env = fake_env
             result = collector.call(env)
 
             expect(requests_registry).to have_received(:increment)
@@ -185,7 +192,7 @@ describe Prometheus::Client::FortyTwo do
         end
 
         context 'the stripper is buggy' do
-          let(:exception) { ArgumentError.new('ooops') }
+          let(:exception) { FunkyException.new('ooops') }
 
           it 'does not fail, only uses the standard stripper' do
             collector =
@@ -198,6 +205,7 @@ describe Prometheus::Client::FortyTwo do
 
             expect(app).not_to have_received(:call)
 
+            env = fake_env
             result = collector.call(env)
 
             expect(requests_registry).to have_received(:increment)
@@ -230,10 +238,87 @@ describe Prometheus::Client::FortyTwo do
           end
         end
       end
+
+      context 'with static files to ignore' do
+        let(:ignore_path) { '/a/fictional/path' }
+
+        let(:static_files) do
+          [
+            '/robot.txt',
+            '/whatever/you_desire.ico',
+            '/image/your_mule.jpg'
+          ]
+        end
+
+        before(:each) do
+          allow(Prometheus::Client::FortyTwo::Middleware::Collector)
+            .to receive(:find_static_files!)
+            .with(ignore_path)
+            .and_return(static_files)
+        end
+
+        it 'ignores static files' do
+          collector =
+            Prometheus::Client::FortyTwo::Middleware::Collector.new(
+              app,
+              registry: registry,
+              metrics_prefix: metrics_prefix,
+              static_files_path: ignore_path
+            )
+
+          expect(app).not_to have_received(:call)
+
+          static_files.each do |path|
+            env = fake_env('PATH_INFO' => path)
+            result = collector.call(env)
+
+            expect(app).to have_received(:call)
+              .with(env)
+
+            expect(result).to eq response
+          end
+
+          expect(requests_registry).not_to have_received(:increment)
+          expect(durations_registry).not_to have_received(:observe)
+
+          expect(app).to have_received(:call)
+            .exactly(3).times
+
+          path = '/not_a_static.file'
+          env = fake_env('PATH_INFO' => path)
+          result = collector.call(env)
+
+          expect(app).to have_received(:call)
+            .with(env)
+
+          expect(result).to eq response
+
+          expect(requests_registry).to have_received(:increment)
+            .once
+          expect(requests_registry).to have_received(:increment)
+            .with(
+              labels: {
+                code: code.to_s,
+                method: request_method.downcase,
+                path: path
+              }
+            )
+          expect(durations_registry).to have_received(:observe)
+            .once
+          expect(durations_registry).to have_received(:observe)
+            .with(
+              be_within(0.001).of(duration),
+              labels: {
+                method: request_method.downcase,
+                path: path
+              }
+            )
+        end
+      end
     end
 
     context 'when the request fails' do
-      let(:exception) { ArgumentError.new('aaargh') }
+      let(:exception) { FunkyException.new('aaargh') }
 
       before(:each) do
         allow(app).to receive(:call)
@@ -253,13 +338,14 @@ describe Prometheus::Client::FortyTwo do
 
           expect(app).not_to have_received(:call)
 
+          env = fake_env
           expect { collector.call(env) }
             .to raise_error(exception)
 
           expect(exceptions_registry).to have_received(:increment)
             .once
           expect(exceptions_registry).to have_received(:increment)
-            .with(labels: { exception: 'ArgumentError' })
+            .with(labels: { exception: 'FunkyException' })
 
           expect(app).to have_received(:call)
             .once
@@ -282,19 +368,143 @@ describe Prometheus::Client::FortyTwo do
 
           expect(app).not_to have_received(:call)
 
+          env = fake_env
           expect { collector.call(env) }
             .to raise_error(exception)
 
           expect(exceptions_registry).to have_received(:increment)
             .once
           expect(exceptions_registry).to have_received(:increment)
-            .with(labels: { exception: 'ArgumentError' })
+            .with(labels: { exception: 'FunkyException' })
 
           expect(app).to have_received(:call)
             .once
           expect(app).to have_received(:call)
             .with(env)
         end
+      end
+
+      context 'with static files to ignore' do
+        let(:ignore_path) { '/a/fictional/path' }
+
+        let(:static_files) do
+          [
+            '/robot.txt',
+            '/whatever/you_desire.ico',
+            '/image/your_mule.jpg'
+          ]
+        end
+
+        before(:each) do
+          allow(Prometheus::Client::FortyTwo::Middleware::Collector)
+            .to receive(:find_static_files!)
+            .with(ignore_path)
+            .and_return(static_files)
+        end
+
+        it 'ignores static files' do
+          collector =
+            Prometheus::Client::FortyTwo::Middleware::Collector.new(
+              app,
+              registry: registry,
+              metrics_prefix: metrics_prefix,
+              static_files_path: ignore_path
+            )
+
+          expect(app).not_to have_received(:call)
+
+          static_files.each do |path|
+            env = fake_env('PATH_INFO' => path)
+            expect { collector.call(env) }
+              .to raise_error(exception)
+
+            expect(app).to have_received(:call)
+              .with(env)
+          end
+
+          expect(exceptions_registry).not_to have_received(:increment)
+
+          expect(app).to have_received(:call)
+            .exactly(3).times
+
+          path = '/not_a_static.file'
+          env = fake_env('PATH_INFO' => path)
+          expect { collector.call(env) }
+            .to raise_error(exception)
+
+          expect(app).to have_received(:call)
+            .with(env)
+
+          expect(exceptions_registry).to have_received(:increment)
+            .once
+          expect(exceptions_registry).to have_received(:increment)
+            .with(labels: { exception: 'FunkyException' })
+        end
+      end
+    end
+
+    context 'when the static files discovery fails' do
+      let(:exception) { FunkyException.new('wow, dude!') }
+      let(:ignore_path) { '/a/fictional/path' }
+      let(:response) { double(:response) }
+
+      before(:each) do
+        allow(response).to receive(:first)
+          .and_return(code)
+
+        allow(app).to receive(:call) do
+          sleep(duration)
+          response
+        end
+
+        allow(requests_registry).to receive(:increment)
+        allow(durations_registry).to receive(:observe)
+
+        allow(Prometheus::Client::FortyTwo::Middleware::Collector)
+          .to receive(:find_static_files!)
+          .with(ignore_path)
+          .and_raise(exception)
+      end
+
+      it 'starts all the same and collects all requests' do
+        collector =
+          Prometheus::Client::FortyTwo::Middleware::Collector.new(
+            app,
+            registry: registry,
+            metrics_prefix: metrics_prefix,
+            static_files_path: ignore_path
+          )
+
+        env = fake_env
+        result = collector.call(env)
+
+        expect(requests_registry).to have_received(:increment)
+          .once
+        expect(requests_registry).to have_received(:increment)
+          .with(
+            labels: {
+              code: code.to_s,
+              method: request_method.downcase,
+              path: cleaned_up_path
+            }
+          )
+
+        expect(durations_registry).to have_received(:observe)
+          .once
+        expect(durations_registry).to have_received(:observe)
+          .with(
+            be_within(0.001).of(duration),
+            labels: {
+              method: request_method.downcase,
+              path: cleaned_up_path
+            }
+          )
+
+        expect(app).to have_received(:call)
+          .once
+        expect(app).to have_received(:call)
+          .with(env)
+        expect(result).to eq response
       end
     end
   end

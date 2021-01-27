@@ -1,5 +1,6 @@
 require 'prometheus/client/forty_two/version'
 require 'prometheus/middleware/collector'
+require 'find'
 
 module Prometheus
   module Client
@@ -33,11 +34,34 @@ module Prometheus
         #
         # If the cleaner fails, the collector will not and only use the
         # original strip function.
+        #
+        #
+        # When your rails server serves static files, those requests
+        # are not necessarily very relevant to your stats. Set the
+        # `:static_files_path` option to make the middleware list those
+        # files on startup and ignore them.
+        # If the directory does not exist or an exception is raised
+        # when discovering it, the Collector will just ignore it and
+        # start anyways.
+        #
+        #   use(
+        #     Prometheus::Client::FortyTwo::Middleware::Collector,
+        #     static_files_path: File.join(File.dirname(__FILE__), 'public')
+        #   )
+        #
+        #   # all routes pointing to /public will be ignored
         class Collector < Prometheus::Middleware::Collector
           def initialize(app, options = {})
             super
 
+            @static_files = self.class.find_static_files(options[:static_files_path])
             @specific_id_stripper = options[:specific_id_stripper] || ->(path) { path }
+          end
+
+          def call(env)
+            return @app.call(env) if @static_files.include?(env['PATH_INFO'])
+
+            super
           end
 
           protected
@@ -48,6 +72,23 @@ module Prometheus
               @specific_id_stripper.call(stripped_path)
             rescue StandardError
               stripped_path
+            end
+          end
+
+          class << self
+            def find_static_files(path)
+              find_static_files!(path)
+            rescue StandardError
+              []
+            end
+
+            def find_static_files!(path)
+              return [] unless path
+
+              Find
+                .find(path)
+                .select { |f| File.file?(f) }
+                .map { |f| f.gsub(%r{\A\./}, '/') }
             end
           end
         end

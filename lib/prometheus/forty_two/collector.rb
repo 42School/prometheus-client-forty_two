@@ -83,10 +83,12 @@ module Prometheus
         def find_static_files!(path)
           return [] unless path
 
+          path = path.gsub(%r{/+\z}, '')
+          path_matcher = %r{\A#{Regexp.escape(path)}/}
           Find
             .find(path)
             .select { |f| File.file?(f) }
-            .map { |f| f.gsub(%r{\A\./}, '/') }
+            .map { |f| f.gsub(path_matcher, '/') }
         end
       end
     end

@@ -15,7 +15,7 @@ describe Prometheus::FortyTwo do
       let(:uuid) { SecureRandom.uuid }
       let(:path_info) { "/blah/123/something/#{uuid}/users/123lautaro/b" }
       let(:metrics_prefix) { 'whatever' }
-      let(:duration) { 0.2 }
+      let(:duration) { 0.01 }
 
       let(:cleaned_up_path) { '/blah/:id/something/:uuid/users/123lautaro/b' }
 
@@ -99,13 +99,15 @@ describe Prometheus::FortyTwo do
         end
 
         context 'without specific id strippers' do
-          it 'collects a success like the original collector' do
-            collector = Prometheus::FortyTwo::Collector.new(
+          let(:collector) do
+            Prometheus::FortyTwo::Collector.new(
               app,
               registry: registry,
               metrics_prefix: metrics_prefix
             )
+          end
 
+          it 'collects a success like the original collector' do
             expect(app).not_to have_received(:call)
 
             env = fake_env
@@ -126,7 +128,7 @@ describe Prometheus::FortyTwo do
               .once
             expect(durations_registry).to have_received(:observe)
               .with(
-                be_within(0.001).of(duration),
+                be_within(duration / 10).of(duration),
                 labels: {
                   method: request_method.downcase,
                   path: cleaned_up_path
@@ -145,8 +147,8 @@ describe Prometheus::FortyTwo do
           context 'the stripper is not buggy' do
             let(:cleaned_up_path) { '/blah/:id/something/:uuid/users/:id/b' }
 
-            it 'strips specific ids' do
-              collector = Prometheus::FortyTwo::Collector.new(
+            let(:collector) do
+              Prometheus::FortyTwo::Collector.new(
                 app,
                 registry: registry,
                 metrics_prefix: metrics_prefix,
@@ -154,7 +156,9 @@ describe Prometheus::FortyTwo do
                   path.gsub(%r{/users/[^/]*}, '/users/:id')
                 }
               )
+            end
 
+            it 'strips specific ids' do
               expect(app).not_to have_received(:call)
 
               env = fake_env
@@ -175,7 +179,7 @@ describe Prometheus::FortyTwo do
                 .once
               expect(durations_registry).to have_received(:observe)
                 .with(
-                  be_within(0.001).of(duration),
+                  be_within(duration / 10).of(duration),
                   labels: {
                     method: request_method.downcase,
                     path: cleaned_up_path
@@ -193,14 +197,16 @@ describe Prometheus::FortyTwo do
           context 'the stripper is buggy' do
             let(:exception) { FunkyException.new('ooops') }
 
-            it 'does not fail, only uses the standard stripper' do
-              collector = Prometheus::FortyTwo::Collector.new(
+            let(:collector) do
+              Prometheus::FortyTwo::Collector.new(
                 app,
                 registry: registry,
                 metrics_prefix: metrics_prefix,
                 specific_id_stripper: -> { raise exception }
               )
+            end
 
+            it 'does not fail, only uses the standard stripper' do
               expect(app).not_to have_received(:call)
 
               env = fake_env
@@ -221,7 +227,7 @@ describe Prometheus::FortyTwo do
                 .once
               expect(durations_registry).to have_received(:observe)
                 .with(
-                  be_within(0.001).of(duration),
+                  be_within(duration / 10).of(duration),
                   labels: {
                     method: request_method.downcase,
                     path: cleaned_up_path
@@ -248,6 +254,15 @@ describe Prometheus::FortyTwo do
             ]
           end
 
+          let(:collector) do
+            Prometheus::FortyTwo::Collector.new(
+              app,
+              registry: registry,
+              metrics_prefix: metrics_prefix,
+              static_files_path: ignore_path
+            )
+          end
+
           before(:each) do
             allow(Prometheus::FortyTwo::Collector)
               .to receive(:find_static_files!)
@@ -256,13 +271,6 @@ describe Prometheus::FortyTwo do
           end
 
           it 'ignores static files' do
-            collector = Prometheus::FortyTwo::Collector.new(
-              app,
-              registry: registry,
-              metrics_prefix: metrics_prefix,
-              static_files_path: ignore_path
-            )
-
             expect(app).not_to have_received(:call)
 
             static_files.each do |path|
@@ -304,7 +312,7 @@ describe Prometheus::FortyTwo do
               .once
             expect(durations_registry).to have_received(:observe)
               .with(
-                be_within(0.001).of(duration),
+                be_within(duration / 10).of(duration),
                 labels: {
                   method: request_method.downcase,
                   path: path
@@ -317,6 +325,14 @@ describe Prometheus::FortyTwo do
       context 'when the request fails' do
         let(:exception) { FunkyException.new('aaargh') }
 
+        let(:collector) do
+          Prometheus::FortyTwo::Collector.new(
+            app,
+            registry: registry,
+            metrics_prefix: metrics_prefix
+          )
+        end
+
         before(:each) do
           allow(app).to receive(:call)
             .and_raise(exception)
@@ -326,12 +342,6 @@ describe Prometheus::FortyTwo do
 
         context 'without specific id strippers' do
           it 'collects a failure like the original collector' do
-            collector = Prometheus::FortyTwo::Collector.new(
-              app,
-              registry: registry,
-              metrics_prefix: metrics_prefix
-            )
-
             expect(app).not_to have_received(:call)
 
             env = fake_env
@@ -351,8 +361,8 @@ describe Prometheus::FortyTwo do
         end
 
         context 'with specific id strippers' do
-          it 'collects a failure like the original collector' do
-            collector = Prometheus::FortyTwo::Collector.new(
+          let(:collector) do
+            Prometheus::FortyTwo::Collector.new(
               app,
               registry: registry,
               metrics_prefix: metrics_prefix,
@@ -360,7 +370,9 @@ describe Prometheus::FortyTwo do
                 path.gsub(%r{/users/[^/]*}, '/users/:id')
               }
             )
+          end
 
+          it 'collects a failure like the original collector' do
             expect(app).not_to have_received(:call)
 
             env = fake_env
@@ -390,6 +402,15 @@ describe Prometheus::FortyTwo do
             ]
           end
 
+          let(:collector) do
+            Prometheus::FortyTwo::Collector.new(
+              app,
+              registry: registry,
+              metrics_prefix: metrics_prefix,
+              static_files_path: ignore_path
+            )
+          end
+
           before(:each) do
             allow(Prometheus::FortyTwo::Collector)
               .to receive(:find_static_files!)
@@ -398,13 +419,6 @@ describe Prometheus::FortyTwo do
           end
 
           it 'ignores static files' do
-            collector = Prometheus::FortyTwo::Collector.new(
-              app,
-              registry: registry,
-              metrics_prefix: metrics_prefix,
-              static_files_path: ignore_path
-            )
-
             expect(app).not_to have_received(:call)
 
             static_files.each do |path|
@@ -442,6 +456,15 @@ describe Prometheus::FortyTwo do
         let(:ignore_path) { '/a/fictional/path' }
         let(:response) { double(:response) }
 
+        let(:collector) do
+          Prometheus::FortyTwo::Collector.new(
+            app,
+            registry: registry,
+            metrics_prefix: metrics_prefix,
+            static_files_path: ignore_path
+          )
+        end
+
         before(:each) do
           allow(response).to receive(:first)
             .and_return(code)
@@ -461,13 +484,6 @@ describe Prometheus::FortyTwo do
         end
 
         it 'starts all the same and collects all requests' do
-          collector = Prometheus::FortyTwo::Collector.new(
-            app,
-            registry: registry,
-            metrics_prefix: metrics_prefix,
-            static_files_path: ignore_path
-          )
-
           env = fake_env
           result = collector.call(env)
 
@@ -486,7 +502,7 @@ describe Prometheus::FortyTwo do
             .once
           expect(durations_registry).to have_received(:observe)
             .with(
-              be_within(0.001).of(duration),
+              be_within(duration / 10).of(duration),
               labels: {
                 method: request_method.downcase,
                 path: cleaned_up_path

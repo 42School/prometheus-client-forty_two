@@ -48,16 +48,30 @@ module Prometheus
     #   )
     #
     #   # all routes pointing to /public will be ignored
+    #
+    #
+    # Some of your app routes might not be relevant to your stats either
+    # (ie. /metrics, or /assets/**/* paths). Set the `:irrelevant_paths`
+    # option to provide a method that will match paths you want to ignore.
+    #
+    #   use(
+    #     Prometheus::Client::FortyTwo::Middleware::Collector,
+    #     irrelevant_paths: labmda { |path|
+    #       path == '/metrics' ||
+    #       path =~ %r{\A/assets/}
+    #     }
+    #   )
     class Collector < Prometheus::Middleware::Collector
       def initialize(app, options = {})
         super
 
         @static_files = self.class.find_static_files(options[:static_files_path])
+        @irrelevant_paths = options[:irrelevant_paths] || ->(_path) { false }
         @specific_id_stripper = options[:specific_id_stripper] || ->(path) { path }
       end
 
       def call(env)
-        return @app.call(env) if @static_files.include?(env['PATH_INFO'])
+        return @app.call(env) if ignore_path?(env['PATH_INFO'])
 
         super
       end
@@ -71,6 +85,16 @@ module Prometheus
         rescue StandardError
           stripped_path
         end
+      end
+
+      def ignore_path?(path)
+        @static_files.include?(path) || irrelevant_path?(path)
+      end
+
+      def irrelevant_path?(path)
+        @irrelevant_paths.call(path)
+      rescue StandardError
+        false
       end
 
       class << self

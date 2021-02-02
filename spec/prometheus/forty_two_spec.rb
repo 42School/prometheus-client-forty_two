@@ -320,6 +320,145 @@ describe Prometheus::FortyTwo do
               )
           end
         end
+
+        context 'with irrelevant paths' do
+          context 'the detector is not buggy' do
+            let(:irrelevant_paths) do
+              lambda do |path|
+                path == '/metrics' ||
+                  path =~ %r{\A/assets/}
+              end
+            end
+
+            let(:collector) do
+              Prometheus::FortyTwo::Collector.new(
+                app,
+                registry: registry,
+                metrics_prefix: metrics_prefix,
+                irrelevant_paths: irrelevant_paths
+              )
+            end
+
+            let(:paths_to_ignore) do
+              [
+                '/metrics',
+                '/assets/blah.js',
+                '/assets/dir/stylesheet.css'
+              ]
+            end
+
+            let(:paths_to_collect) do
+              [
+                '/metricsitude',
+                '/something/assets/blah.js',
+                '/whatever/assets/dir/stylesheet.css',
+                '/metrics/assets',
+                '/metrics/metrics'
+              ]
+            end
+
+            it 'ignores irrelevant paths' do
+              expect(app).not_to have_received(:call)
+
+              paths_to_ignore.each do |path|
+                env = fake_env('PATH_INFO' => path)
+                result = collector.call(env)
+
+                expect(app).to have_received(:call)
+                  .with(env)
+
+                expect(result).to eq response
+              end
+
+              expect(requests_registry).not_to have_received(:increment)
+              expect(durations_registry).not_to have_received(:observe)
+
+              expect(app).to have_received(:call)
+                .exactly(3).times
+
+              paths_to_collect.each do |path|
+                env = fake_env('PATH_INFO' => path)
+                result = collector.call(env)
+
+                expect(app).to have_received(:call)
+                  .with(env)
+
+                expect(result).to eq response
+
+                expect(requests_registry).to have_received(:increment)
+                  .with(
+                    labels: {
+                      code: code.to_s,
+                      method: request_method.downcase,
+                      path: path
+                    }
+                  )
+
+                expect(durations_registry).to have_received(:observe)
+                  .with(
+                    be_within(duration / 10).of(duration),
+                    labels: {
+                      method: request_method.downcase,
+                      path: path
+                    }
+                  )
+              end
+
+              expect(requests_registry).to have_received(:increment)
+                .exactly(paths_to_collect.length).times
+              expect(durations_registry).to have_received(:observe)
+                .exactly(paths_to_collect.length).times
+            end
+          end
+
+          context 'the detector is buggy' do
+            let(:exception) { FunkyException.new('ooops') }
+
+            let(:collector) do
+              Prometheus::FortyTwo::Collector.new(
+                app,
+                registry: registry,
+                metrics_prefix: metrics_prefix,
+                irrelevant_paths: ->(_path) { raise exception }
+              )
+            end
+
+            it 'does not fail, collects all routes' do
+              expect(app).not_to have_received(:call)
+
+              env = fake_env
+              result = collector.call(env)
+
+              expect(requests_registry).to have_received(:increment)
+                .once
+              expect(requests_registry).to have_received(:increment)
+                .with(
+                  labels: {
+                    code: code.to_s,
+                    method: request_method.downcase,
+                    path: cleaned_up_path
+                  }
+                )
+
+              expect(durations_registry).to have_received(:observe)
+                .once
+              expect(durations_registry).to have_received(:observe)
+                .with(
+                  be_within(duration / 10).of(duration),
+                  labels: {
+                    method: request_method.downcase,
+                    path: cleaned_up_path
+                  }
+                )
+
+              expect(app).to have_received(:call)
+                .once
+              expect(app).to have_received(:call)
+                .with(env)
+              expect(result).to eq response
+            end
+          end
+        end
       end
 
       context 'when the request fails' do

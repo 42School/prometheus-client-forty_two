@@ -25,6 +25,7 @@ simple metrics on routes visited on the app, but it fails in some specific cases
 
 1.  Non-numeric, non-uuid identifiers are not cleaned up.
 2.  When static files are served by the server, those queries are collected.
+3.  Some other non-static routes may not be that relevant anyways
 
 This gem offers another Collector that can be customized to:
 
@@ -50,6 +51,16 @@ This gem offers another Collector that can be customized to:
 
         # this will recursively list all files in the `/public` directory
         # and not collect any metrics on those
+
+3.  Ignore other custom routes.
+
+        use Prometheus::Client::FortyTwo::Middleware::Collector,
+            irrelevant_paths: labmda { |path|
+              path == '/metrics' ||
+              path =~ %r{\A/assets/}
+            }
+        # this will ignore /metrics and all routes under /assets
+        # no metric will be collected on those
 
 See [Prometheus Client](https://github.com/prometheus/client_ruby) to build your
 own metrics.
